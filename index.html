@@ -115,7 +115,7 @@
           );
           setTimeout(pollingProcess, pollInterval);
 
-          if (pollInterval <= (minInterval * 2 + maxInterval) / 3) {
+          if (pollInterval >= (minInterval * 2 + maxInterval) / 3) {
             changeMeasurementStatus(1);
           } else {
             changeMeasurementStatus(0);
