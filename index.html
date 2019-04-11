@@ -12,6 +12,27 @@
         background: rgba(145, 0, 0, 0.774);
         color: #fff;
       }
+
+      #gpsStatus.gpsStatusOk {
+        background: rgba(0, 145, 0, 0.774);
+        border-color: rgba(100, 100, 100, 1);
+        border-style: solid 1px;
+        color: #fff;
+      }
+
+      #gpsStatus.gpsStatusWait {
+        background: rgba(0, 0, 0, 0.774);
+        border-color: rgba(0, 145, 0, 1);
+        border-style: solid 1px;
+        color: #fff;
+      }
+
+      #gpsStatus.gpsStatusErr {
+        background: rgba(0, 0, 0, 0.774);
+        border-color: rgba(145, 0, 0, 1);
+        border-style: solid 1px;
+        color: #fff;
+      }
     </style>
     <title>Altitude Graph</title>
   </head>
@@ -24,6 +45,7 @@
         id="currentAltitudeErrorValue"
       ></span>
       [m]
+      <span id="gpsStatus" class="gpsStatusErr">Loading</span>
     </div>
     <span id="resetButton">RESET</span>
     <div id="show_result"></div>
@@ -93,12 +115,19 @@
           );
           setTimeout(pollingProcess, pollInterval);
 
+          if (pollInterval <= (minInterval * 2 + maxInterval) / 3) {
+            changeMeasurementStatus(1);
+          } else {
+            changeMeasurementStatus(0);
+          }
           positionReceived(positionObj);
         };
 
         const errorCallback = errObj => {
           const errorRetryInterval = maxInterval;
           setTimeout(pollingProcess, errorRetryInterval);
+
+          changeMeasurementStatus(-1);
           positionError(errObj);
         };
 
@@ -117,19 +146,15 @@
           pos.latitude,
           pos.longitude
         );
-				currentDistance += distanseStep;
+        currentDistance += distanseStep;
         const x = currentDistance;
 
-				altitudeLog.x.push(x);
+        altitudeLog.x.push(x);
         altitudeLog.y.push(pos.altitude);
         altitudeErrorLowLog.x.push(x);
-        altitudeErrorLowLog.y.push(
-          pos.altitude - pos.altitudeAccuracy * 0.5
-        );
+        altitudeErrorLowLog.y.push(pos.altitude - pos.altitudeAccuracy * 0.5);
         altitudeErrorHighLog.x.push(x);
-        altitudeErrorHighLog.y.push(
-          pos.altitude + pos.altitudeAccuracy * 0.5
-        );
+        altitudeErrorHighLog.y.push(pos.altitude + pos.altitudeAccuracy * 0.5);
         document.getElementById("currentAltitudeValue").textContent =
           Math.round(pos.altitude * 10) / 10;
         document.getElementById("currentAltitudeErrorValue").textContent =
@@ -226,6 +251,29 @@ document.getElementById("show_result").innerHTML = gl_text;
             Math.pow(lon_diff * n * Math.cos(lat_ave), 2)
         );
         return distance / 1000; // km;
+      }
+
+      function changeMeasurementStatus(status) {
+        var statusElement = document.getElementById("gpsStatus");
+        switch (status) {
+          case 0:
+            statusElement.textContent = "OK";
+            statusElement.classList.remove("gpsStatusWait", "gpsStatusErr");
+            statusElement.classList.add("gpsStatusOk");
+
+            break;
+          case 1:
+            statusElement.textContent = "Wait";
+            statusElement.classList.remove("gpsStatusOk", "gpsStatusErr");
+            statusElement.classList.add("gpsStatusWait");
+            break;
+
+          default:
+            statusElement.textContent = "ERROR";
+            statusElement.classList.remove("gpsStatusOk", "gpsStatusWait");
+            statusElement.classList.add("gpsStatusErr");
+            break;
+        }
       }
 
       /**
