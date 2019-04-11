@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        background: #000000;
+        color: #fff;
+      }
+
+      #resetButton {
+        background: rgba(145, 0, 0, 0.774);
+        color: #fff;
+      }
+    </style>
+    <title>Altitude Graph</title>
+  </head>
+  <body>
+    <div>
+      <div id="altitudeGraphDiv"></div>
+    </div>
+    <div class="altitudeValue">
+      <span id="currentAltitudeValue"></span> ±<span
+        id="currentAltitudeErrorValue"
+      ></span>
+      [m]
+    </div>
+    <span id="resetButton">RESET</span>
+    <div id="show_result"></div>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>
+      let currentDistance = 0.0;
+      let previousLatLon = [0, 0];
+      let measureCount = 0;
+      const distanceStepMin = 0.03;
+
+      const altitudeLog = {
+        x: [],
+        y: [],
+        type: "scatter",
+        mode: "lines",
+        line: { width: 3, color: "#ccffff", simplify: true }
+      };
+
+      const altitudeErrorHighLog = {
+        x: [],
+        y: [],
+        type: "scatter",
+        opacity: 0.8,
+        mode: "lines",
+        line: { width: 1.5, dash: "dot", color: "#5555ff", simplify: true }
+      };
+
+      const altitudeErrorLowLog = {
+        x: [],
+        y: [],
+        type: "scatter",
+        mode: "lines",
+        opacity: 0.8,
+        line: { width: 1.5, dash: "dot", color: "#5555ff", simplify: true }
+      };
+
+      /**
+       * 位置測定のポーリングを行う関数
+       *   移動速度に応じて測定頻度を調整しながら測定する
+       */
+      function pollingProcess() {
+        // 目標とする距離ステップ  [m]
+        const targetStepDistance = 100;
+
+        // ポーリング間隔の最大値および最小値 [ms]
+        const maxInterval = 40000;
+        const minInterval = 10000;
+
+        // Geolocation APIのオプション
+        const geoOptions = {
+          maximumAge: 0,
+          timeout: 2000,
+          enableHighAccuracy: true
+        };
+
+        const successCallback = positionObj => {
+          measureCount++;
+
+          // ポーリング周期の決定
+          const pollInterval = Math.max(
+            Math.min(
+              (targetStepDistance / (positionObj.coords.speed + 0.000001)) *
+                1000,
+              maxInterval
+            ),
+            minInterval
+          );
+          setTimeout(pollingProcess, pollInterval);
+
+          positionReceived(positionObj);
+        };
+
+        const errorCallback = errObj => {
+          const errorRetryInterval = maxInterval;
+          setTimeout(pollingProcess, errorRetryInterval);
+          positionError(errObj);
+        };
+
+        navigator.geolocation.getCurrentPosition(
+          successCallback,
+          errorCallback,
+          geoOptions
+        );
+      }
+
+      function positionReceived(positionObj) {
+        let pos = positionObj.coords;
+        const distanseStep = getDistanceByLatLon(
+          previousLatLon[0],
+          previousLatLon[1],
+          pos.latitude,
+          pos.longitude
+        );
+				currentDistance += distanseStep;
+        const x = currentDistance;
+
+				altitudeLog.x.push(x);
+        altitudeLog.y.push(pos.altitude);
+        altitudeErrorLowLog.x.push(x);
+        altitudeErrorLowLog.y.push(
+          pos.altitude - pos.altitudeAccuracy * 0.5
+        );
+        altitudeErrorHighLog.x.push(x);
+        altitudeErrorHighLog.y.push(
+          pos.altitude + pos.altitudeAccuracy * 0.5
+        );
+        document.getElementById("currentAltitudeValue").textContent =
+          Math.round(pos.altitude * 10) / 10;
+        document.getElementById("currentAltitudeErrorValue").textContent =
+          Math.round(pos.altitudeAccuracy) * 0.5;
+
+        Plotly.redraw("altitudeGraphDiv");
+
+        previousLatLon = [pos.latitude, pos.longitude];
+      }
+
+      function positionError(errObj) {
+        // 位置情報の取得に失敗
+      }
+
+      function resetAll() {
+        measureCount = 0;
+        altitudeLog.x = [];
+        altitudeLog.y = [];
+        altitudeErrorLowLog.x = [];
+        altitudeErrorLowLog.y = [];
+        altitudeErrorHighLog.x = [];
+        altitudeErrorHighLog.y = [];
+        Plotly.redraw("altitudeGraphDiv");
+        currentDistance = 0.0;
+        measureCount = 0;
+      }
+
+      /*
+      function successCallbackFunc(position) {
+        const dateTime = measureCount;
+        measureCount++;
+
+        altitudeLog.x.push(dateTime);
+        altitudeLog.y.push(position.coords.altitude);
+        altitudeErrorLowLog.x.push(dateTime);
+        altitudeErrorLowLog.y.push(
+          position.coords.altitude - position.coords.altitudeAccuracy * 0.5
+        );
+        altitudeErrorHighLog.x.push(dateTime);
+        altitudeErrorHighLog.y.push(
+          position.coords.altitude + position.coords.altitudeAccuracy * 0.5
+        );
+        document.getElementById("currentAltitudeValue").textContent =
+          Math.round(position.coords.altitude * 100) / 100;
+        document.getElementById("currentAltitudeErrorValue").textContent =
+          Math.round(position.coords.altitudeAccuracy) * 0.5;
+
+        Plotly.redraw("altitudeGraphDiv");
+
+var gl_text = "緯度：" + position.coords.latitude + "<br>";
+gl_text += "経度：" + position.coords.longitude + "<br>";
+gl_text += "高度：" + position.coords.altitude + "<br>";
+gl_text += "緯度・経度の誤差：" + position.coords.accuracy + "<br>";
+gl_text += "高度の誤差：" + position.coords.altitudeAccuracy + "<br>";
+gl_text += "方角：" + position.coords.heading + "<br>";
+gl_text += "速度：" + position.coords.speed + "<br>";
+document.getElementById("show_result").innerHTML = gl_text;
+
+      }
+			*/
+
+      // Hubenyの公式
+      function getDistanceByLatLon(lat1, lng1, lat2, lng2) {
+        a = 6378137.0;
+        a2 = Math.pow(a, 2);
+        e = Math.sqrt((a2 - Math.pow(6356752.314, 2)) / a2);
+
+        // 地点１の緯度と経度（ラジアン）
+        rlat1 = (lat1 * Math.PI) / 180;
+        rlon1 = (lng1 * Math.PI) / 180;
+
+        // 地点2の緯度と経度（ラジアン）
+        rlat2 = (lat2 * Math.PI) / 180;
+        rlon2 = (lng2 * Math.PI) / 180;
+
+        // 緯度の差
+        lat_diff = rlat1 - rlat2;
+
+        // 経度の差
+        lon_diff = rlon1 - rlon2;
+
+        // 緯度の平均値
+        lat_ave = (rlat1 + rlat2) / 2;
+
+        // 第一離心率
+        w = Math.sqrt(1 - Math.pow(e, 2) * Math.pow(Math.sin(lat_ave), 2));
+
+        meridian = (a * (1 - Math.pow(e, 2))) / Math.pow(w, 3);
+
+        // 子午線曲率半径
+        n = a / w;
+        distance = Math.sqrt(
+          Math.pow(lat_diff * meridian, 2) +
+            Math.pow(lon_diff * n * Math.cos(lat_ave), 2)
+        );
+        return distance / 1000; // km;
+      }
+
+      /**
+       * 初期化処理
+       *
+       * - Plotly.jsグラフ初期化
+       * - 測定ポーリング開始
+       */
+      function initalize() {
+        // 初回の位置情報を捨てておくと精度が上がりそうな気がする
+        navigator.geolocation.getCurrentPosition(() => {}, () => {});
+
+        const graphSeries = [
+          altitudeLog,
+          altitudeErrorHighLog,
+          altitudeErrorLowLog
+        ];
+        const graphLayout = {
+          font: {
+            size: 20,
+            color: "#ffffff"
+          },
+          xaxis: {
+            showgrid: true,
+            zeroline: true,
+            showline: true,
+            mirror: "ticks",
+            gridcolor: "#443322",
+            gridwidth: 1,
+            zerolinecolor: "#443322",
+            zerolinewidth: 2,
+            linecolor: "#666644",
+            linewidth: 3
+          },
+          yaxis: {
+            showgrid: true,
+            zeroline: true,
+            showline: true,
+            mirror: "ticks",
+            gridcolor: "#443322",
+            gridwidth: 1,
+            zerolinecolor: "#443322",
+            zerolinewidth: 2,
+            linecolor: "#666644",
+            linewidth: 3
+          },
+          plot_bgcolor: "#0000",
+          paper_bgcolor: "#fff1",
+          showlegend: false
+        };
+
+        Plotly.newPlot("altitudeGraphDiv", graphSeries, graphLayout, {
+          showSendToCloud: false
+        });
+
+        document.getElementById("resetButton").onclick = resetAll;
+
+        // 位置取得機能の初期化およびポーリング開始
+        const initializeGeolocationMeasurement = () => {
+          navigator.geolocation.getCurrentPosition(
+            positionObj => {
+              previousLatLon = [
+                positionObj.coords.latitude,
+                positionObj.coords.longitude
+              ];
+              currentDistance = 0.0;
+              measureCount = 0;
+              //ポーリング開始
+              setTimeout(pollingProcess, 5000);
+            },
+            errObj => {
+              // 初期化処理のリトライ
+              const errorRetryInterval = 15000;
+              setTimeout(initializeGeolocationMeasurement, errorRetryInterval);
+            }
+          );
+        };
+
+        // GPSが安定するまで少し待ってから位置取得の初期化を行う (効果は謎)
+        const initializeGeolocationWaitMilliSeconds = 3000;
+        setTimeout(
+          initializeGeolocationMeasurement,
+          initializeGeolocationWaitMilliSeconds
+        );
+      }
+
+      window.onload = initalize;
+    </script>
+  </body>
+</html>
