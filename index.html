@@ -88,11 +88,11 @@
        */
       function pollingProcess() {
         // 目標とする距離ステップ  [m]
-        const targetStepDistance = 100;
+        const targetStepDistance = 30;
 
         // ポーリング間隔の最大値および最小値 [ms]
-        const maxInterval = 40000;
-        const minInterval = 10000;
+        const maxInterval = 20000;
+        const minInterval = 5000;
 
         // Geolocation APIのオプション
         const geoOptions = {
@@ -115,7 +115,7 @@
           );
           setTimeout(pollingProcess, pollInterval);
 
-          if (pollInterval >= (maxInterval * 2 + minInterval) / 3) {
+          if (pollInterval >= (maxInterval * 3 + minInterval) / 4) {
             changeMeasurementStatus(1);
           } else {
             changeMeasurementStatus(0);
