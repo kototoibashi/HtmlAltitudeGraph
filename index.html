@@ -47,6 +47,7 @@
       [m]
       <span id="gpsStatus" class="gpsStatusErr">Loading</span>
     </div>
+    <select id="pollingIntervalSelector"></select>
     <span id="resetButton">RESET</span>
     <div id="show_result"></div>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
@@ -64,14 +65,14 @@
         { name: "Low 300", step: 300, max: 90, min: 30 }
       ];
 
-      const measurementSetting = { step: 100, max: 40, min: 10 };
+      let measurementSetting = { step: 100, max: 40, min: 10 };
 
       const altitudeLog = {
         x: [],
         y: [],
         type: "scatter",
         mode: "lines",
-        line: { width: 3, color: "#ccffff", simplify: true, shape: spline }
+        line: { width: 3, color: "#ccffff", simplify: true, shape: "spline" }
       };
 
       const altitudeErrorHighLog = {
@@ -85,7 +86,7 @@
           dash: "dot",
           color: "#5555ff",
           simplify: true,
-          shape: spline
+          shape: "spline"
         }
       };
 
@@ -100,7 +101,7 @@
           dash: "dot",
           color: "#5555ff",
           simplify: true,
-          shape: spline
+          shape: "spline"
         }
       };
 
@@ -316,6 +317,23 @@
         });
 
         document.getElementById("resetButton").onclick = resetAll;
+
+        const pollingIntervalSelector = document.getElementById(
+          "pollingIntervalSelector"
+        );
+
+        for (var i = 0; i < pollingPreset.length; i++) {
+          const op = document.createElement("option");
+          op.value = i;
+          op.text = pollingPreset[i].name;
+          pollingIntervalSelector.appendChild(op);
+        }
+
+        pollingIntervalSelector.onchange = (ev) => {
+          const selected = pollingIntervalSelector.selectedIndex
+          console.log(selected)
+          measurementSetting = pollingPreset[selected]
+        }
 
         // 位置取得機能の初期化およびポーリング開始
         const initializeGeolocationMeasurement = () => {
