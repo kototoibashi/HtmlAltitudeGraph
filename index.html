@@ -52,6 +52,78 @@
     <div id="show_result"></div>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script>
+      const DB_NAME = "web-gps-logger";
+      const DB_VERSION = 1;
+      const DB_STORE_NAME = "gps-log";
+
+      let db;
+
+      function openDb() {
+        console.log("openDb ...");
+        let req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onsuccess = function(evt) {
+          // ガベージコレクションの問題を避けるため、結果を得る際は
+          // "req" より "this" を使用する方がよい
+          // db = req.result;
+          db = this.result;
+          console.log("openDb DONE");
+        };
+        req.onerror = function(evt) {
+          console.error("openDb:", evt.target.errorCode);
+        };
+
+        req.onupgradeneeded = function(evt) {
+          console.log("openDb.onupgradeneeded");
+          var store = evt.currentTarget.result.createObjectStore(
+            DB_STORE_NAME,
+            { keyPath: "date"}
+          );
+        };
+      }
+
+      function getObjectStore(store_name, mode) {
+    var tx = db.transaction(store_name, mode);
+    return tx.objectStore(store_name);
+  }
+
+    function recordPosition(coords) {
+      const today = new Date();
+      const dateString = today.toISOString()
+      /*
+      latitude …… 緯度（-180～180、単位：度）
+longitude …… 経度（-90～90、単位：度）
+altitude …… 高度（単位：m）
+accuracy …… 緯度・経度の誤差（単位：m）
+altitudeAccuracy …… 高度の誤差（単位：m）
+heading …… 方角（0～360、単位：度）
+speed …… 速度（単位：m/秒）
+*/
+    let obj = {
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      altitude: coords.altitude,
+      accuracy: coords.accuracy,
+      altitudeAccuracy: coords.accuracy,
+      heading: coords.heading,
+      speed: coords.speed,
+      date: dateString
+    };
+
+    let store = getObjectStore(DB_STORE_NAME, 'readwrite');
+    let req;
+    try {
+      req = store.add(obj);
+    } catch (e) {
+      //throw e;
+    }
+    req.onsuccess = function (evt) {
+      console.log("Insertion in DB successful");
+    };
+    req.onerror = function() {
+      console.error("addPublication error", this.error);
+    };
+  }
+
       let currentDistance = 0.0;
       let previousLatLon = [0, 0];
       let measureCount = 0;
@@ -161,6 +233,8 @@
 
       function positionReceived(positionObj) {
         const pos = positionObj.coords;
+        recordPosition(pos)
+
         const distanseStep = getDistanceByLatLon(
           previousLatLon[0],
           previousLatLon[1],
@@ -359,6 +433,7 @@
           );
         };
 
+        openDb();
         initializeGeolocationMeasurement();
       }
 
