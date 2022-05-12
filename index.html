@@ -1,368 +1,386 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      body {
-        background: #000000;
-        color: #fff;
-      }
 
-      #resetButton {
-        background: rgba(145, 0, 0, 0.774);
-        color: #fff;
-      }
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      background: #000000;
+      color: #fff;
+    }
 
-      #gpsStatus.gpsStatusOk {
-        background: rgba(0, 145, 0, 0.774);
-        border-color: rgba(0, 145, 0, 1);
-        border-style: solid;
-        color: #fff;
-      }
+    #resetButton {
+      background: rgba(145, 0, 0, 0.774);
+      color: #fff;
+    }
 
-      #gpsStatus.gpsStatusWait {
-        background: rgba(0, 0, 0, 0.774);
-        border-color: rgba(0, 145, 0, 1);
-        border-style: solid;
-        color: #fff;
-      }
+    #gpsStatus.gpsStatusOk {
+      background: rgba(0, 145, 0, 0.774);
+      border-color: rgba(0, 145, 0, 1);
+      border-style: solid;
+      color: #fff;
+    }
 
-      #gpsStatus.gpsStatusErr {
-        background: rgba(0, 0, 0, 0.774);
-        border-color: rgba(145, 0, 0, 1);
-        border-style: solid;
-        color: #fff;
-      }
-    </style>
-    <title>Altitude Graph</title>
-  </head>
-  <body>
-    <div>
-      <div id="altitudeGraphDiv"></div>
-    </div>
-    <div class="altitudeValue">
-      <span id="currentAltitudeValue"></span> ±<span
-        id="currentAltitudeErrorValue"
-      ></span>
-      [m]
-      <span id="gpsStatus" class="gpsStatusErr">Loading</span>
-    </div>
+    #gpsStatus.gpsStatusWait {
+      background: rgba(0, 0, 0, 0.774);
+      border-color: rgba(0, 145, 0, 1);
+      border-style: solid;
+      color: #fff;
+    }
+
+    #gpsStatus.gpsStatusErr {
+      background: rgba(0, 0, 0, 0.774);
+      border-color: rgba(145, 0, 0, 1);
+      border-style: solid;
+      color: #fff;
+    }
+  </style>
+  <title>Altitude Graph</title>
+</head>
+
+<body>
+  <div>
+    <div id="altitudeGraphDiv"></div>
+  </div>
+  <div class="altitudeValue">
+    <span id="currentAltitudeValue">0</span>
+    ±<span id="currentAltitudeErrorValue">0</span>
+    [m] / 
+    <span id="currentGradientValue">0</span>
+    %
+  </div>
+  <div>
+    <span id="gpsStatus" class="gpsStatusErr">Loading</span>
     <select id="pollingIntervalSelector"></select>
     <span id="resetButton">RESET</span>
     <div id="show_result"></div>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    <script>
-      let currentDistance = 0.0;
-      let previousLatLon = [0, 0];
-      let measureCount = 0;
+  </div>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script>
+    let currentDistance = 0.0;
+    let previousLatLon = [0, 0];
+    let measureCount = 0;
 
-      const pollingPreset = [
-        { name: "High 50", step: 50, max: 20, min: 5 },
-        { name: "High 100", step: 100, max: 20, min: 5 },
-        { name: "Medium 100", step: 100, max: 40, min: 10 },
-        { name: "Medium 200", step: 200, max: 40, min: 10 },
-        { name: "Low 100", step: 100, max: 60, min: 20 },
-        { name: "Low 300", step: 300, max: 90, min: 30 }
+    const pollingPreset = [
+      { name: "High 50", step: 50, max: 20, min: 5 },
+      { name: "High 100", step: 100, max: 20, min: 5 },
+      { name: "Medium 100", step: 100, max: 40, min: 10 },
+      { name: "Medium 200", step: 200, max: 40, min: 10 },
+      { name: "Low 100", step: 100, max: 60, min: 20 },
+      { name: "Low 300", step: 300, max: 90, min: 30 }
+    ];
+
+    let measurementSetting = { step: 100, max: 40, min: 10 };
+
+    const altitudeLog = {
+      x: [],
+      y: [],
+      type: "scatter",
+      mode: "lines",
+      line: { width: 3, color: "#ccffff", simplify: true }
+    };
+
+    const altitudeErrorHighLog = {
+      x: [],
+      y: [],
+      type: "scatter",
+      opacity: 0.8,
+      mode: "lines",
+      line: {
+        width: 1.5,
+        dash: "dot",
+        color: "#5555ff",
+        simplify: true
+      }
+    };
+
+    const altitudeErrorLowLog = {
+      x: [],
+      y: [],
+      type: "scatter",
+      mode: "lines",
+      opacity: 0.8,
+      line: {
+        width: 1.5,
+        dash: "dot",
+        color: "#5555ff",
+        simplify: true
+      }
+    };
+
+    /**
+     * 位置測定のポーリングを行う関数
+     *   移動速度に応じて測定頻度を調整しながら測定する
+     */
+    function pollingProcess() {
+      // 目標とする距離ステップ  [m]
+      const targetStepDistance = measurementSetting.step;
+
+      // ポーリング間隔の最大値および最小値 [ms]
+      const maxInterval = measurementSetting.max * 1000;
+      const minInterval = measurementSetting.min * 1000;
+
+      // Geolocation APIのオプション
+      const geoOptions = {
+        maximumAge: 0,
+        timeout: 2000,
+        enableHighAccuracy: true
+      };
+
+      const successCallback = positionObj => {
+        measureCount++;
+
+        // ポーリング周期の決定
+        const pollInterval = Math.max(
+          Math.min(
+            (targetStepDistance / (positionObj.coords.speed + 0.000001)) *
+            1000,
+            maxInterval
+          ),
+          minInterval
+        );
+        setTimeout(pollingProcess, pollInterval);
+
+        if (pollInterval >= (maxInterval * 3 + minInterval) / 4) {
+          changeMeasurementStatus(1);
+        } else {
+          changeMeasurementStatus(0);
+        }
+        positionReceived(positionObj);
+      };
+
+      const errorCallback = errObj => {
+        const errorRetryInterval = maxInterval;
+        setTimeout(pollingProcess, errorRetryInterval);
+
+        changeMeasurementStatus(-1);
+        positionError(errObj);
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        successCallback,
+        errorCallback,
+        geoOptions
+      );
+    }
+
+    function positionReceived(positionObj) {
+      const pos = positionObj.coords;
+      const distanseStep = getDistanceByLatLon(
+        previousLatLon[0],
+        previousLatLon[1],
+        pos.latitude,
+        pos.longitude
+      );
+      currentDistance += distanseStep;
+      const x = currentDistance;
+
+      altitudeLog.x.push(x);
+      altitudeLog.y.push(pos.altitude);
+      altitudeErrorLowLog.x.push(x);
+      altitudeErrorLowLog.y.push(pos.altitude - pos.altitudeAccuracy * 0.5);
+      altitudeErrorHighLog.x.push(x);
+      altitudeErrorHighLog.y.push(pos.altitude + pos.altitudeAccuracy * 0.5);
+      document.getElementById("currentAltitudeValue").textContent =
+        Math.round(pos.altitude * 10) / 10;
+      document.getElementById("currentAltitudeErrorValue").textContent =
+        Math.round(pos.altitudeAccuracy) * 0.5;
+      
+      for(let i = altitudeLog.x.length - 1 ; i > 0 ; i--){
+        const alt_delta = pos.altitude - altitudeLog.y[i];
+        const distance = currentDistance - altitudeLog.x[i];
+        const min_distance = 50;
+        if(distance > min_distance){
+          const gradient = alt_delta / distance * 100;
+          document.getElementById("currentGradientValue").textContent =
+            Math.round(gradient * 10) / 10;
+          break;
+        }
+      }
+
+      Plotly.redraw("altitudeGraphDiv");
+
+      previousLatLon = [pos.latitude, pos.longitude];
+    }
+
+    function positionError(errObj) {
+      // 位置情報の取得に失敗
+    }
+
+    function resetAll() {
+      measureCount = 0;
+      altitudeLog.x = [];
+      altitudeLog.y = [];
+      altitudeErrorLowLog.x = [];
+      altitudeErrorLowLog.y = [];
+      altitudeErrorHighLog.x = [];
+      altitudeErrorHighLog.y = [];
+      Plotly.redraw("altitudeGraphDiv");
+      currentDistance = 0.0;
+      measureCount = 0;
+    }
+
+    // Hubenyの公式
+    function getDistanceByLatLon(lat1, lng1, lat2, lng2) {
+      a = 6378137.0;
+      a2 = Math.pow(a, 2);
+      e = Math.sqrt((a2 - Math.pow(6356752.314, 2)) / a2);
+
+      // 地点１の緯度と経度（ラジアン）
+      rlat1 = (lat1 * Math.PI) / 180;
+      rlon1 = (lng1 * Math.PI) / 180;
+
+      // 地点2の緯度と経度（ラジアン）
+      rlat2 = (lat2 * Math.PI) / 180;
+      rlon2 = (lng2 * Math.PI) / 180;
+
+      // 緯度の差
+      lat_diff = rlat1 - rlat2;
+
+      // 経度の差
+      lon_diff = rlon1 - rlon2;
+
+      // 緯度の平均値
+      lat_ave = (rlat1 + rlat2) / 2;
+
+      // 第一離心率
+      w = Math.sqrt(1 - Math.pow(e, 2) * Math.pow(Math.sin(lat_ave), 2));
+
+      meridian = (a * (1 - Math.pow(e, 2))) / Math.pow(w, 3);
+
+      // 子午線曲率半径
+      n = a / w;
+      distance = Math.sqrt(
+        Math.pow(lat_diff * meridian, 2) +
+        Math.pow(lon_diff * n * Math.cos(lat_ave), 2)
+      );
+      return distance / 1000; // km;
+    }
+
+    function changeMeasurementStatus(status) {
+      const statusElement = document.getElementById("gpsStatus");
+      switch (status) {
+        case 0:
+          statusElement.textContent = "OK";
+          statusElement.classList.remove("gpsStatusWait", "gpsStatusErr");
+          statusElement.classList.add("gpsStatusOk");
+          break;
+        case 1:
+          statusElement.textContent = "Wait";
+          statusElement.classList.remove("gpsStatusOk", "gpsStatusErr");
+          statusElement.classList.add("gpsStatusWait");
+          break;
+        default:
+          statusElement.textContent = "ERROR";
+          statusElement.classList.remove("gpsStatusOk", "gpsStatusWait");
+          statusElement.classList.add("gpsStatusErr");
+          break;
+      }
+    }
+
+    /**
+     * 初期化処理
+     *
+     * - Plotly.jsグラフ初期化
+     * - 測定ポーリング開始
+     */
+    function initalize() {
+      // 初回の位置情報を捨てておくと精度が上がりそうな気がする
+      navigator.geolocation.getCurrentPosition(() => { }, () => { });
+
+      const graphSeries = [
+        altitudeLog,
+        altitudeErrorHighLog,
+        altitudeErrorLowLog
       ];
-
-      let measurementSetting = { step: 100, max: 40, min: 10 };
-
-      const altitudeLog = {
-        x: [],
-        y: [],
-        type: "scatter",
-        mode: "lines",
-        line: { width: 3, color: "#ccffff", simplify: true }
+      const graphLayout = {
+        font: {
+          size: 20,
+          color: "#ffffff"
+        },
+        xaxis: {
+          showgrid: true,
+          zeroline: true,
+          showline: true,
+          mirror: "ticks",
+          gridcolor: "#443322",
+          gridwidth: 1,
+          zerolinecolor: "#443322",
+          zerolinewidth: 2,
+          linecolor: "#666644",
+          linewidth: 3
+        },
+        yaxis: {
+          showgrid: true,
+          zeroline: true,
+          showline: true,
+          mirror: "ticks",
+          gridcolor: "#443322",
+          gridwidth: 1,
+          zerolinecolor: "#443322",
+          zerolinewidth: 2,
+          linecolor: "#666644",
+          linewidth: 3
+        },
+        plot_bgcolor: "#0000",
+        paper_bgcolor: "#fff1",
+        showlegend: false
       };
 
-      const altitudeErrorHighLog = {
-        x: [],
-        y: [],
-        type: "scatter",
-        opacity: 0.8,
-        mode: "lines",
-        line: {
-          width: 1.5,
-          dash: "dot",
-          color: "#5555ff",
-          simplify: true
-        }
+      Plotly.newPlot("altitudeGraphDiv", graphSeries, graphLayout, {
+        showSendToCloud: false
+      });
+
+      document.getElementById("resetButton").onclick = resetAll;
+
+      const pollingIntervalSelector = document.getElementById(
+        "pollingIntervalSelector"
+      );
+
+      for (var i = 0; i < pollingPreset.length; i++) {
+        const op = document.createElement("option");
+        op.value = i;
+        op.text = pollingPreset[i].name;
+        pollingIntervalSelector.appendChild(op);
+      }
+
+      pollingIntervalSelector.onchange = ev => {
+        const selected = pollingIntervalSelector.selectedIndex;
+        console.log(selected);
+        measurementSetting = pollingPreset[selected];
       };
 
-      const altitudeErrorLowLog = {
-        x: [],
-        y: [],
-        type: "scatter",
-        mode: "lines",
-        opacity: 0.8,
-        line: {
-          width: 1.5,
-          dash: "dot",
-          color: "#5555ff",
-          simplify: true
-        }
-      };
-
-      /**
-       * 位置測定のポーリングを行う関数
-       *   移動速度に応じて測定頻度を調整しながら測定する
-       */
-      function pollingProcess() {
-        // 目標とする距離ステップ  [m]
-        const targetStepDistance = measurementSetting.step;
-
-        // ポーリング間隔の最大値および最小値 [ms]
-        const maxInterval = measurementSetting.max * 1000;
-        const minInterval = measurementSetting.min * 1000;
-
-        // Geolocation APIのオプション
-        const geoOptions = {
-          maximumAge: 0,
-          timeout: 2000,
-          enableHighAccuracy: true
-        };
-
-        const successCallback = positionObj => {
-          measureCount++;
-
-          // ポーリング周期の決定
-          const pollInterval = Math.max(
-            Math.min(
-              (targetStepDistance / (positionObj.coords.speed + 0.000001)) *
-                1000,
-              maxInterval
-            ),
-            minInterval
-          );
-          setTimeout(pollingProcess, pollInterval);
-
-          if (pollInterval >= (maxInterval * 3 + minInterval) / 4) {
-            changeMeasurementStatus(1);
-          } else {
-            changeMeasurementStatus(0);
-          }
-          positionReceived(positionObj);
-        };
-
-        const errorCallback = errObj => {
-          const errorRetryInterval = maxInterval;
-          setTimeout(pollingProcess, errorRetryInterval);
-
-          changeMeasurementStatus(-1);
-          positionError(errObj);
-        };
-
+      // 位置取得機能の初期化およびポーリング開始
+      const initializeGeolocationMeasurement = () => {
         navigator.geolocation.getCurrentPosition(
-          successCallback,
-          errorCallback,
-          geoOptions
-        );
-      }
-
-      function positionReceived(positionObj) {
-        const pos = positionObj.coords;
-        const distanseStep = getDistanceByLatLon(
-          previousLatLon[0],
-          previousLatLon[1],
-          pos.latitude,
-          pos.longitude
-        );
-        currentDistance += distanseStep;
-        const x = currentDistance;
-
-        altitudeLog.x.push(x);
-        altitudeLog.y.push(pos.altitude);
-        altitudeErrorLowLog.x.push(x);
-        altitudeErrorLowLog.y.push(pos.altitude - pos.altitudeAccuracy * 0.5);
-        altitudeErrorHighLog.x.push(x);
-        altitudeErrorHighLog.y.push(pos.altitude + pos.altitudeAccuracy * 0.5);
-        document.getElementById("currentAltitudeValue").textContent =
-          Math.round(pos.altitude * 10) / 10;
-        document.getElementById("currentAltitudeErrorValue").textContent =
-          Math.round(pos.altitudeAccuracy) * 0.5;
-
-        Plotly.redraw("altitudeGraphDiv");
-
-        previousLatLon = [pos.latitude, pos.longitude];
-      }
-
-      function positionError(errObj) {
-        // 位置情報の取得に失敗
-      }
-
-      function resetAll() {
-        measureCount = 0;
-        altitudeLog.x = [];
-        altitudeLog.y = [];
-        altitudeErrorLowLog.x = [];
-        altitudeErrorLowLog.y = [];
-        altitudeErrorHighLog.x = [];
-        altitudeErrorHighLog.y = [];
-        Plotly.redraw("altitudeGraphDiv");
-        currentDistance = 0.0;
-        measureCount = 0;
-      }
-
-      // Hubenyの公式
-      function getDistanceByLatLon(lat1, lng1, lat2, lng2) {
-        a = 6378137.0;
-        a2 = Math.pow(a, 2);
-        e = Math.sqrt((a2 - Math.pow(6356752.314, 2)) / a2);
-
-        // 地点１の緯度と経度（ラジアン）
-        rlat1 = (lat1 * Math.PI) / 180;
-        rlon1 = (lng1 * Math.PI) / 180;
-
-        // 地点2の緯度と経度（ラジアン）
-        rlat2 = (lat2 * Math.PI) / 180;
-        rlon2 = (lng2 * Math.PI) / 180;
-
-        // 緯度の差
-        lat_diff = rlat1 - rlat2;
-
-        // 経度の差
-        lon_diff = rlon1 - rlon2;
-
-        // 緯度の平均値
-        lat_ave = (rlat1 + rlat2) / 2;
-
-        // 第一離心率
-        w = Math.sqrt(1 - Math.pow(e, 2) * Math.pow(Math.sin(lat_ave), 2));
-
-        meridian = (a * (1 - Math.pow(e, 2))) / Math.pow(w, 3);
-
-        // 子午線曲率半径
-        n = a / w;
-        distance = Math.sqrt(
-          Math.pow(lat_diff * meridian, 2) +
-            Math.pow(lon_diff * n * Math.cos(lat_ave), 2)
-        );
-        return distance / 1000; // km;
-      }
-
-      function changeMeasurementStatus(status) {
-        const statusElement = document.getElementById("gpsStatus");
-        switch (status) {
-          case 0:
-            statusElement.textContent = "OK";
-            statusElement.classList.remove("gpsStatusWait", "gpsStatusErr");
-            statusElement.classList.add("gpsStatusOk");
-            break;
-          case 1:
-            statusElement.textContent = "Wait";
-            statusElement.classList.remove("gpsStatusOk", "gpsStatusErr");
-            statusElement.classList.add("gpsStatusWait");
-            break;
-          default:
-            statusElement.textContent = "ERROR";
-            statusElement.classList.remove("gpsStatusOk", "gpsStatusWait");
-            statusElement.classList.add("gpsStatusErr");
-            break;
-        }
-      }
-
-      /**
-       * 初期化処理
-       *
-       * - Plotly.jsグラフ初期化
-       * - 測定ポーリング開始
-       */
-      function initalize() {
-        // 初回の位置情報を捨てておくと精度が上がりそうな気がする
-        navigator.geolocation.getCurrentPosition(() => {}, () => {});
-
-        const graphSeries = [
-          altitudeLog,
-          altitudeErrorHighLog,
-          altitudeErrorLowLog
-        ];
-        const graphLayout = {
-          font: {
-            size: 20,
-            color: "#ffffff"
+          positionObj => {
+            previousLatLon = [
+              positionObj.coords.latitude,
+              positionObj.coords.longitude
+            ];
+            currentDistance = 0.0;
+            measureCount = 0;
+            //ポーリング開始
+            setTimeout(pollingProcess, 3000);
           },
-          xaxis: {
-            showgrid: true,
-            zeroline: true,
-            showline: true,
-            mirror: "ticks",
-            gridcolor: "#443322",
-            gridwidth: 1,
-            zerolinecolor: "#443322",
-            zerolinewidth: 2,
-            linecolor: "#666644",
-            linewidth: 3
+          errObj => {
+            // 初期化処理のリトライ
+            const errorRetryInterval = 15000;
+            setTimeout(initializeGeolocationMeasurement, errorRetryInterval);
           },
-          yaxis: {
-            showgrid: true,
-            zeroline: true,
-            showline: true,
-            mirror: "ticks",
-            gridcolor: "#443322",
-            gridwidth: 1,
-            zerolinecolor: "#443322",
-            zerolinewidth: 2,
-            linecolor: "#666644",
-            linewidth: 3
-          },
-          plot_bgcolor: "#0000",
-          paper_bgcolor: "#fff1",
-          showlegend: false
-        };
-
-        Plotly.newPlot("altitudeGraphDiv", graphSeries, graphLayout, {
-          showSendToCloud: false
-        });
-
-        document.getElementById("resetButton").onclick = resetAll;
-
-        const pollingIntervalSelector = document.getElementById(
-          "pollingIntervalSelector"
+          {
+            maximumAge: 0,
+            timeout: 20000,
+            enableHighAccuracy: true
+          }
         );
+      };
 
-        for (var i = 0; i < pollingPreset.length; i++) {
-          const op = document.createElement("option");
-          op.value = i;
-          op.text = pollingPreset[i].name;
-          pollingIntervalSelector.appendChild(op);
-        }
+      initializeGeolocationMeasurement();
+    }
 
-        pollingIntervalSelector.onchange = ev => {
-          const selected = pollingIntervalSelector.selectedIndex;
-          console.log(selected);
-          measurementSetting = pollingPreset[selected];
-        };
+    window.onload = initalize;
+  </script>
+</body>
 
-        // 位置取得機能の初期化およびポーリング開始
-        const initializeGeolocationMeasurement = () => {
-          navigator.geolocation.getCurrentPosition(
-            positionObj => {
-              previousLatLon = [
-                positionObj.coords.latitude,
-                positionObj.coords.longitude
-              ];
-              currentDistance = 0.0;
-              measureCount = 0;
-              //ポーリング開始
-              setTimeout(pollingProcess, 3000);
-            },
-            errObj => {
-              // 初期化処理のリトライ
-              const errorRetryInterval = 15000;
-              setTimeout(initializeGeolocationMeasurement, errorRetryInterval);
-            },
-            {
-              maximumAge: 0,
-              timeout: 20000,
-              enableHighAccuracy: true
-            }
-          );
-        };
-
-        initializeGeolocationMeasurement();
-      }
-
-      window.onload = initalize;
-    </script>
-  </body>
 </html>
