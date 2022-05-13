@@ -133,11 +133,10 @@
         // ポーリング周期の決定
         const pollInterval = Math.max(
           Math.min(
-            (targetStepDistance / (positionObj.coords.speed + 0.000001)) *
-            1000,
-            maxInterval
-          ),
-          minInterval
+            ( targetStepDistance / (positionObj.coords.speed + 0.000001)) * 1000
+            , maxInterval
+          )
+          , minInterval
         );
         setTimeout(pollingProcess, pollInterval);
 
@@ -189,7 +188,7 @@
       for(let i = altitudeLog.x.length - 1 ; i > 0 ; i--){
         const alt_delta = pos.altitude - altitudeLog.y[i];
         const distance = currentDistance - altitudeLog.x[i];
-        const min_distance = 50;
+        const min_distance = 50E-3; // 50m
         if(distance > min_distance){
           const gradient = alt_delta / distance * 100;
           document.getElementById("currentGradientValue").textContent =
